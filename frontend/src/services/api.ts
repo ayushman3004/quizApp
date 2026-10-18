@@ -32,21 +32,30 @@ export async function fetchWithFallback<T>(endpoint: string, options?: RequestIn
       ? { Authorization: `Bearer ${cachedAuthToken}` }
       : {};
 
-    const res = await fetch(`${API_BASE}${endpoint}`, {
+    // Cache-buster timestamp for GET requests to ensure 100% fresh, uncached network data
+    const isGet = !options?.method || options.method.toUpperCase() === "GET";
+    const cacheBuster = isGet ? `${endpoint.includes("?") ? "&" : "?"}_t=${Date.now()}` : "";
+    const targetUrl = `${API_BASE}${endpoint}${cacheBuster}`;
+
+    const res = await fetch(targetUrl, {
+      cache: "no-store",
       headers: {
         "Content-Type": "application/json",
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        "Pragma": "no-cache",
+        "Expires": "0",
         ...authHeaders,
         ...options?.headers,
       },
       ...options,
     });
     if (!res.ok) {
-      throw new Error(`HTTP error! status: ${res.status}`);
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
     }
     const data = await res.json();
     return data;
   } catch (err) {
-    console.warn(`API call ${endpoint} failed, utilizing resilient offline cache:`, err);
+    console.warn(`[QuizVerse API] Request failed for ${endpoint}:`, err);
     if (fallbackData !== undefined) {
       return fallbackData;
     }
