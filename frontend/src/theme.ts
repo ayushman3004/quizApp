@@ -1,0 +1,38 @@
+export const theme = {
+  colors: {
+    background: "#080C16",
+    surface: "#101827",
+    surfaceLight: "#1A253A",
+    surfaceBorder: "#24324D",
+    primary: "#8B5CF6", // Purple
+    primaryGradient: ["#7C3AED", "#A855F7"] as const,
+    accentCyan: "#06B6D4",
+    accentCyanGradient: ["#0284C7", "#06B6D4"] as const,
+    accentGold: "#F59E0B",
+    accentGoldGradient: ["#D97706", "#FBBF24"] as const,
+    accentEmerald: "#10B981",
+    accentEmeraldGradient: ["#059669", "#34D399"] as const,
+    accentRose: "#F43F5E",
+    accentRoseGradient: ["#E11D48", "#FB7185"] as const,
+    textPrimary: "#F8FAFC",
+    textSecondary: "#94A3B8",
+    textMuted: "#64748B",
+    correct: "#10B981",
+    incorrect: "#EF4444",
+  },
+  spacing: {
+    xs: 4,
+    sm: 8,
+    md: 12,
+    lg: 16,
+    xl: 20,
+    xxl: 24,
+  },
+  borderRadius: {
+    sm: 8,
+    md: 12,
+    lg: 16,
+    xl: 24,
+    full: 9999,
+  },
+};
