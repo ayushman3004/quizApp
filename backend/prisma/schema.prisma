@@ -1,0 +1,378 @@
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  USER
+  QUIZ_MASTER
+  ADMIN
+}
+
+enum MatchMode {
+  QUICK_MATCH
+  ONE_VS_ONE
+  MULTIPLAYER
+  FRIEND_BATTLE
+  TOURNAMENT
+}
+
+enum MatchStatus {
+  WAITING
+  STARTING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum QuestionDifficulty {
+  EASY
+  MEDIUM
+  HARD
+  EXPERT
+}
+
+enum QuestionType {
+  MULTIPLE_CHOICE
+  TRUE_FALSE
+  MULTIPLE_CORRECT
+  NUMERICAL
+  IMAGE_BASED
+  AUDIO_BASED
+  MATCHING
+  ORDERING
+  ASSERTION_REASON
+  CASE_BASED
+}
+
+enum PlayerArchetype {
+  SPEEDSTER
+  STRATEGIST
+  CLUTCHER
+  SCHOLAR
+  SPECIALIST
+  UNRANKED
+}
+
+enum TournamentType {
+  DAILY
+  WEEKLY
+  MONTHLY
+  COLLEGE
+  CORPORATE
+}
+
+enum TournamentStatus {
+  UPCOMING
+  REGISTRATION
+  QUALIFIER
+  ROUND_2
+  SEMIFINAL
+  FINAL
+  COMPLETED
+}
+
+model User {
+  id                  String             @id @default(auto()) @map("_id") @db.ObjectId
+  email               String             @unique
+  username            String             @unique
+  displayName         String
+  passwordHash        String?
+  avatarUrl           String?
+  preferredLanguage   String             @default("en")
+  ageBracket          String?
+  country             String             @default("IN")
+  college             String?
+  school              String?
+  profession          String?
+  examPreparation     String?
+  interests           String[]           @default([])
+  role                Role               @default(USER)
+  
+  // Competitive & Progression Stats
+  rating              Int                @default(1200) // Separate competitive MMR
+  xp                  Int                @default(0)
+  level               Int                @default(1)
+  coins               Int                @default(100)
+  streak              Int                @default(0)
+  longestStreak       Int                @default(0)
+  lastActiveDate      DateTime?
+  matchesPlayed       Int                @default(0)
+  matchesWon          Int                @default(0)
+  accuracy            Float              @default(0.0)
+  totalQuestionsAnswered Int             @default(0)
+  bestAnswerStreak    Int                @default(0)
+  archetype           PlayerArchetype    @default(UNRANKED)
+
+  // Creator profile info (Substack-style Quiz Master)
+  bio                 String?
+  isVerifiedCreator   Boolean            @default(false)
+  creatorRating       Float              @default(5.0)
+  creatorFollowersCount Int              @default(0)
+
+  // Relationships
+  createdQuizzes      Quiz[]             @relation("CreatedQuizzes")
+  matchParticipants   MatchParticipant[]
+  matchAnswers        MatchAnswer[]
+  learningProgress    LearningProgress[]
+  achievements        UserAchievement[]
+  notifications       Notification[]
+  sentFriendRequests  Friendship[]       @relation("SentFriendRequests")
+  receivedFriendRequests Friendship[]    @relation("ReceivedFriendRequests")
+  sentChallenges      FriendChallenge[]  @relation("SentChallenges")
+  receivedChallenges  FriendChallenge[]  @relation("ReceivedChallenges")
+
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+}
+
+model Quiz {
+  id                  String             @id @default(auto()) @map("_id") @db.ObjectId
+  title               String
+  description         String
+  category            String
+  subject             String?
+  topic               String?
+  coverImage          String?
+  difficulty          QuestionDifficulty @default(MEDIUM)
+  dynamicDifficulty   Float              @default(2.5) // System adjusted
+  isPublished         Boolean            @default(true)
+  playCount           Int                @default(0)
+  rating              Float              @default(4.8)
+  timeLimitSec        Int                @default(15)
+  tags                String[]           @default([])
+  
+  creatorId           String             @db.ObjectId
+  creator             User               @relation("CreatedQuizzes", fields: [creatorId], references: [id])
+  
+  questions           Question[]
+  matches             Match[]
+  friendChallenges    FriendChallenge[]
+
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+}
+
+model Question {
+  id                  String             @id @default(auto()) @map("_id") @db.ObjectId
+  quizId              String?            @db.ObjectId
+  quiz                Quiz?              @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  
+  type                QuestionType       @default(MULTIPLE_CHOICE)
+  questionText        String
+  explanation         String?
+  options             Json               // Array of options: [{ id: "A", text: "..." }]
+  correctAnswers      Json               // Array of correct option IDs or values: ["B"]
+  imageUrl            String?
+  audioUrl            String?
+  
+  difficulty          QuestionDifficulty @default(MEDIUM)
+  basePoints          Int                @default(100)
+  timeLimitSec        Int                @default(15)
+  category            String?
+
+  // Dynamic system difficulty telemetry
+  totalAttempts       Int                @default(0)
+  correctAttempts     Int                @default(0)
+  actualSuccessRate   Float              @default(1.0)
+  systemDifficulty    QuestionDifficulty @default(MEDIUM)
+
+  matchAnswers        MatchAnswer[]
+  
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+}
+
+model Match {
+  id                  String             @id @default(auto()) @map("_id") @db.ObjectId
+  code                String             @unique // Short 6-char lobby code
+  mode                MatchMode          @default(QUICK_MATCH)
+  status              MatchStatus        @default(WAITING)
+  category            String?
+  quizId              String?            @db.ObjectId
+  quiz                Quiz?              @relation(fields: [quizId], references: [id])
+  
+  maxPlayers          Int                @default(4)
+  currentQuestionIndex Int               @default(0)
+  totalQuestions      Int                @default(10)
+  roundTimeLimitSec   Int                @default(15)
+
+  participants        MatchParticipant[]
+  answers             MatchAnswer[]
+  tournamentId        String?            @db.ObjectId
+  tournament          Tournament?        @relation(fields: [tournamentId], references: [id])
+
+  createdAt           DateTime           @default(now())
+  endedAt             DateTime?
+}
+
+model MatchParticipant {
+  id                  String             @id @default(auto()) @map("_id") @db.ObjectId
+  matchId             String             @db.ObjectId
+  match               Match              @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  userId              String             @db.ObjectId
+  user                User               @relation(fields: [userId], references: [id])
+  
+  currentScore        Int                @default(0)
+  currentRank         Int                @default(1)
+  currentStreak       Int                @default(0)
+  highestStreak       Int                @default(0)
+  speedBonusTotal     Int                @default(0)
+  streakBonusTotal    Int                @default(0)
+  correctCount        Int                @default(0)
+  finalPosition       Int?
+  xpEarned            Int                @default(0)
+  coinsEarned         Int                @default(0)
+  ratingDelta         Int                @default(0)
+
+  joinedAt            DateTime           @default(now())
+
+  @@unique([matchId, userId])
+}
+
+model MatchAnswer {
+  id                  String             @id @default(auto()) @map("_id") @db.ObjectId
+  matchId             String             @db.ObjectId
+  match               Match              @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  userId              String             @db.ObjectId
+  user                User               @relation(fields: [userId], references: [id])
+  questionId          String             @db.ObjectId
+  question            Question           @relation(fields: [questionId], references: [id])
+  
+  questionNumber      Int
+  selectedAnswer      Json               // Array or value submitted
+  isCorrect           Boolean
+  timeTakenSec        Float
+  basePointsEarned    Int                @default(0)
+  speedBonusEarned    Int                @default(0)
+  streakBonusEarned   Int                @default(0)
+  totalScoreEarned    Int                @default(0)
+
+  answeredAt          DateTime           @default(now())
+
+  @@index([matchId, userId])
+}
+
+model LearningProgress {
+  id                  String             @id @default(auto()) @map("_id") @db.ObjectId
+  userId              String             @db.ObjectId
+  user                User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  subject             String
+  topic               String
+  lesson              String
+  isCompleted         Boolean            @default(false)
+  masteryPercentage   Int                @default(0)
+  practiceCount       Int                @default(0)
+  accuracyPercentage  Float              @default(0.0)
+  weakAreas           String[]           @default([])
+  lastPracticedAt     DateTime           @default(now())
+
+  @@unique([userId, subject, topic, lesson])
+}
+
+model Tournament {
+  id                  String             @id @default(auto()) @map("_id") @db.ObjectId
+  title               String
+  description         String
+  type                TournamentType     @default(DAILY)
+  status              TournamentStatus   @default(UPCOMING)
+  category            String
+  entryFeeCoins       Int                @default(50)
+  prizePoolCoins      Int                @default(1000)
+  maxParticipants     Int                @default(64)
+  currentRound        Int                @default(1)
+  totalRounds         Int                @default(4)
+  startTime           DateTime
+  endTime             DateTime?
+
+  matches             Match[]
+  participants        TournamentParticipant[]
+
+  createdAt           DateTime           @default(now())
+}
+
+model TournamentParticipant {
+  id                  String             @id @default(auto()) @map("_id") @db.ObjectId
+  tournamentId        String             @db.ObjectId
+  tournament          Tournament         @relation(fields: [tournamentId], references: [id], onDelete: Cascade)
+  userId              String             @db.ObjectId
+  
+  registeredAt        DateTime           @default(now())
+  rankAchieved        Int?
+  prizeWonCoins       Int                @default(0)
+}
+
+model Friendship {
+  id                  String             @id @default(auto()) @map("_id") @db.ObjectId
+  requesterId         String             @db.ObjectId
+  requester           User               @relation("SentFriendRequests", fields: [requesterId], references: [id])
+  addresseeId         String             @db.ObjectId
+  addressee           User               @relation("ReceivedFriendRequests", fields: [addresseeId], references: [id])
+  status              String             @default("PENDING") // PENDING, ACCEPTED, BLOCKED
+
+  createdAt           DateTime           @default(now())
+
+  @@unique([requesterId, addresseeId])
+}
+
+model FriendChallenge {
+  id                  String             @id @default(auto()) @map("_id") @db.ObjectId
+  senderId            String             @db.ObjectId
+  sender              User               @relation("SentChallenges", fields: [senderId], references: [id])
+  receiverId          String             @db.ObjectId
+  receiver            User               @relation("ReceivedChallenges", fields: [receiverId], references: [id])
+  quizId              String             @db.ObjectId
+  quiz                Quiz               @relation(fields: [quizId], references: [id])
+  
+  senderScore         Int
+  receiverScore       Int?
+  status              String             @default("PENDING") // PENDING, ACCEPTED, COMPLETED, EXPIRED
+
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+}
+
+model Achievement {
+  id                  String             @id @default(auto()) @map("_id") @db.ObjectId
+  code                String             @unique
+  title               String
+  description         String
+  icon                String
+  category            String             @default("GENERAL")
+  xpReward            Int                @default(100)
+  coinsReward         Int                @default(50)
+  
+  userAchievements    UserAchievement[]
+}
+
+model UserAchievement {
+  id                  String             @id @default(auto()) @map("_id") @db.ObjectId
+  userId              String             @db.ObjectId
+  user                User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievementId       String             @db.ObjectId
+  achievement         Achievement        @relation(fields: [achievementId], references: [id])
+  
+  unlockedAt          DateTime           @default(now())
+  progress            Int                @default(100)
+
+  @@unique([userId, achievementId])
+}
+
+model Notification {
+  id                  String             @id @default(auto()) @map("_id") @db.ObjectId
+  userId              String             @db.ObjectId
+  user                User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  title               String
+  body                String
+  type                String             // CHALLENGE, STREAK_RISK, TOURNAMENT, RANK_CHANGE, QUIZ_MILESTONE, LEARNING_TIP
+  actionUrl           String?
+  isRead              Boolean            @default(false)
+
+  createdAt           DateTime           @default(now())
+}
