@@ -4,11 +4,7 @@ import { store } from "@/lib/store";
 export async function POST(req: Request, { params }: { params: Promise<{ code: string }> }) {
   try {
     const { code } = await params;
-    const match = store.matches.get(code);
-
-    if (!match) {
-      return NextResponse.json({ success: false, error: "Match not found" }, { status: 404 });
-    }
+    const match = store.getOrCreateMatch(code);
 
     const leaderboard = match.participants
       .slice()
